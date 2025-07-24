@@ -51,6 +51,13 @@ husky.PositionDemand.onChangeSkills = function (executionContext) {
 
 husky.PositionDemand.onSave=function (executionContext) {
     
+ var formContext = executionContext.getFormContext();
+
+    // 1 = Create, 2 = Update, 3 = Read-Only, etc.
+    if (formContext.ui.getFormType() !== 1) {
+        return;    // skip for anything but a new record
+    } // added now
+
     if (sessionStorage.getItem("saveTriggered")==="true"){
         sessionStorage.removeItem("saveTriggered");
         return;
@@ -58,7 +65,11 @@ husky.PositionDemand.onSave=function (executionContext) {
     husky.PositionDemand.RestrictSave(executionContext);
 }
 husky.PositionDemand.RestrictSave=function(executionContext){
+
+//const formContext = executionContext.getFormContext();
+
     const eventArgs = executionContext.getEventArgs();
+debugger;
     eventArgs.preventDefault();
     /*if(sessionStorage.getItem("saveTriggered"))
     {eventArgs.preventDefault();} // prevent save for now
@@ -69,6 +80,7 @@ husky.PositionDemand.RestrictSave=function(executionContext){
     sessionStorage.setItem("saveTriggered","Yes");*/
 
     const formContext = executionContext.getFormContext();
+
 
     const businessUnit = formContext.getAttribute("ltc_businessunit")?.getValue()?.[0]?.id;
     const platform = formContext.getAttribute("ltc_platform")?.getValue()?.[0]?.id;
@@ -83,12 +95,12 @@ husky.PositionDemand.RestrictSave=function(executionContext){
     // Fetch ltc_husky records where BU, Platform, JobCategory match
     const fetchXml = `
         <fetch>
-          <entity name="ltc_husky">
-            <attribute name="ltc_huskyid"/>
+          <entity name="ltc_positiondemand">
+            <attribute name="ltc_positiondemandid"/>
             <attribute name="ltc_name"/>
-            <attribute name="ltc_skills"/>
+            <attribute name="ltc_skill"/>
             <filter>
-              <condition attribute="ltc_bu" operator="eq" value="${businessUnit.replace(/[{}]/g, "")}"/>
+              <condition attribute="ltc_businessunit" operator="eq" value="${businessUnit.replace(/[{}]/g, "")}"/>
               <condition attribute="ltc_platform" operator="eq" value="${platform.replace(/[{}]/g, "")}"/>
               <condition attribute="ltc_jobcategory" operator="eq" value="${jobCategory}"/>
               <condition attribute="statecode" operator="eq" value="0" />
@@ -96,7 +108,7 @@ husky.PositionDemand.RestrictSave=function(executionContext){
           </entity>
         </fetch>`;
 
-    Xrm.WebApi.retrieveMultipleRecords("ltc_husky", "?fetchXml=" + encodeURIComponent(fetchXml))
+    Xrm.WebApi.retrieveMultipleRecords("ltc_positiondemand", "?fetchXml=" + encodeURIComponent(fetchXml))
         .then(result => {
             if (!result.entities.length) {                 	
                 sessionStorage.setItem("saveTriggered","true");
@@ -109,7 +121,7 @@ husky.PositionDemand.RestrictSave=function(executionContext){
             const matches = [];
 
             result.entities.forEach(husky => {
-                const huskySkills = husky.ltc_skills?.split(",").map(s => parseInt(s));
+                const huskySkills = husky.ltc_skill?.split(",").map(s => parseInt(s));
                 if (!huskySkills?.length) return;
 
                 const commonSkills = huskySkills.filter(s => positionSkills.includes(s));
@@ -136,30 +148,34 @@ husky.PositionDemand.RestrictSave=function(executionContext){
             matches.sort((a, b) => b.percentMatch - a.percentMatch);
             var bestMatchHuskyName=matches[0].husky.ltc_name;
             var clientUrl=Xrm.Utility.getGlobalContext().getClientUrl();
-            var bestMatchHuskyId=matches[0].husky.ltc_huskyid;
-            var link=clientUrl+"/main.aspx?appid=f9a81641-065f-f011-bec1-000d3af2c088&pagetype=entityrecord&etn=ltc_husky&id="+bestMatchHuskyId;
+            var bestMatchHuskyId=matches[0].husky.ltc_positiondemandid;
+            var link=clientUrl+"/main.aspx?appid=f9a81641-065f-f011-bec1-000d3af2c088&pagetype=entityrecord&etn=ltc_positiondemand&id="+bestMatchHuskyId;
 
-            let html = `<div><h3>Best Matching Husky Records</h3>`;
+            let html = `<div><h3>Matching Husky Record Found</h3>`;
             matches.forEach(m => {
-                const url = `${Xrm.Utility.getGlobalContext().getClientUrl()}/main.aspx?appid=f9a81641-065f-f011-bec1-000d3af2c088&pagetype=entityrecord&etn=ltc_husky&id=${m.husky.ltc_huskyid}`;
+                const url = `${Xrm.Utility.getGlobalContext().getClientUrl()}/main.aspx?appid=f9a81641-065f-f011-bec1-000d3af2c088&pagetype=entityrecord&etn=ltc_positiondemand&id=${m.husky.ltc_positiondemandid}`;
                 html += `<p><a href="${url}" target="_blank">${m.husky.ltc_name}</a> - ${m.percentMatch}% skills matched</p>`;
             });
             html += `</div>`;
 
             // Show dialog
             Xrm.Navigation.openConfirmDialog({
-                title: `Existing Husky Match: ${bestPercentage}%`,
-                text: `The best matching husky record is with Name ${bestMatchHuskyName}.\n\n Click "OK" to cancel save and review the Husky.\n\nOr "Cancel" to proceed with save. `
+                title: `Existing Position Demand Match: ${bestPercentage}%`,
+                text: `The best matching Position Demand record is with Name ${bestMatchHuskyName}.\n\n Click "OK" to open the matched Position Demand.\n\nOr "Cancel" to ignore and proceed with saving. `
             }).then(response => {
                 if (response.confirmed) {
                     window.open(link);
                     // Stay on form, no save
-                } else {
+                }
+else if (response.confirmed === false) {
                     // User wants to save anyway
                     sessionStorage.setItem("saveTriggered","true");
                     formContext.data.save();
                     return;
                 }
+else{
+// This is added to prevent saving when closing the dialogue box.
+}
             });
         })
         .catch(err => {
